@@ -26,11 +26,12 @@ def main(argv=None):
 	parser = argparse.ArgumentParser(description='Baguette. Teeworlds demo reader.')
 	parser.add_argument('-v', '--version', action='version',
 		version='%(prog)s 0.1')
-	parser.add_argument('demofile', type=str, help='path to teeworlds demo')
+	parser.add_argument('demofile', type=argparse.FileType('rb'),
+		help='path to teeworlds demo')
 	parser.add_argument('-d', '--debug', action='store_true', help="DON'T.")
 
 	args = parser.parse_args()
-	demo = Demo(args.demofile)
+	demo = Demo(args.demofile, already_loaded=True)
 	if args.debug:
 		f=demo.demo_file
 		# import pdb
