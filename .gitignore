@@ -1,0 +1,8 @@
+*.DS_Store
+*.pyc
+*.tmproj
+build/
+pip-log.txt
+src/
+.ropeproject
+*.demo
