@@ -131,7 +131,7 @@ class Unpacker(object):
 			self.is_error = True
 			return
 
-		added, anint = int_unpack([chr(i) for i in int_to_chars(self.data[self.current_index]) if i != 0])
+		added, anint = int_unpack(self.data[self.current_index:])
 		self.current_index += added
 
 		if self.current_index > self.end_index:
@@ -147,17 +147,18 @@ class Unpacker(object):
 		if self.is_error or self.current_index >= self.end_index:
 			return ""
 
-		astring = ""
+		astring = self.data[self.current_index]
 		for c in self.data[self.current_index:]:
+			self.current_index += 1
 			if c == 0: # c == 0
 				break
 
-			astring += chr(c & 0xff)
+			astring += self.data[self.current_index]
 
 			if self.current_index == self.end_index:
 				self.is_error = True
 				return ""
-		self.current_index += len(astring)
+		self.current_index += 1
 
 		if sanitize_type & SANITIZE:
 			astring = str_sanitize(astring)

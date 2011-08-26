@@ -213,6 +213,7 @@ class DemoReader(object):
 			elif chunk_type == CHUNKTYPEFLAG_TICKMARKER:
 				break
 			elif chunk_type == CHUNKTYPE_MESSAGE:
+				data = pack('{0}i'.format(len(data)), *data)
 				unpacker = Unpacker(data)
 				msg_id = unpacker.get_int()
 				sys = msg_id & 1
