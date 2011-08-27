@@ -3,7 +3,7 @@ from utils import *
 
 
 def str_sanitize_strong(string):
-	return str_sanitize(string, cc=True, strong=True)
+	return str_sanitize(string, strong=True)
 
 
 def str_sanitize_cc(string):
@@ -11,27 +11,15 @@ def str_sanitize_cc(string):
 
 
 def str_sanitize(string, cc=False, strong=False):
-	if strong:
-		cc = True
 	out = []
 	for i in string:
 		i = ord(i)
 		if strong:
 			i &= 0x7f
-		if i < 32 and (not cc or (i != '\r' and i != '\n' and i != '\t')):
+		if i < 32 and (not cc or (not i in ('\r', '\n', '\t'))):
 			i = 32
 		out.append(i)
 	return ''.join([chr(o) for o in out])
-
-
-def str_skip_whitespaces(string):
-	length = len(string)
-	new_string = ''
-	for i in xrange(length):
-		c = string[i]
-		if not c in (' ', '\t', '\n', '\r'):
-			new_string += c
-	return new_string
 
 
 PACKER_BUFFER_SIZE = 2048
@@ -82,7 +70,7 @@ class Packer(object):
 			if self.current_index >= self.end_index:
 				self.is_error = True
 				break
-		self.to_buffer(0)
+		self.to_buffer('\x00')
 
 	def add_raw(self, data):
 		if self.is_error:
@@ -147,24 +135,21 @@ class Unpacker(object):
 		if self.is_error or self.current_index >= self.end_index:
 			return ""
 
-		astring = self.data[self.current_index]
+		astring = ""
 		for c in self.data[self.current_index:]:
 			self.current_index += 1
-			if c == 0: # c == 0
+			if c == "\x00":
 				break
 
-			astring += self.data[self.current_index]
-
-			if self.current_index == self.end_index:
-				self.is_error = True
-				return ""
+			astring += c
 		self.current_index += 1
 
 		if sanitize_type & SANITIZE:
 			astring = str_sanitize(astring)
 		elif sanitize_type & SANITIZE_CC:
-			astring = str_sanitize(astring)
-		return str_skip_whitespaces(astring) \
+			astring = str_sanitize_cc(astring)
+		
+		return astring.lstrip(" \t\n\r") \
 			if sanitize_type & SKIP_START_WHITESPACES else astring
 
 	def get_raw(self, size):

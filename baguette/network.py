@@ -1,3 +1,4 @@
+from commentary import Player
 from utils import ints_to_string
 from packer import SANITIZE_CC, SKIP_START_WHITESPACES
 
@@ -32,8 +33,7 @@ class BaseNet(object):
 			if not isinstance(values[i], attr_proto[i][1]):
 				# try to simply cast it
 				values[i] = attr_proto[i][1](values[i])
-			if not isinstance(values[i], attr_proto[i][1]) and not isinstance(values[i], long):
-				
+			if not isinstance(values[i], attr_proto[i][1]):
 				raise TypeError
 			self.attributes[attr_proto[i][0]] = values[i]
 
@@ -45,16 +45,18 @@ class BaseNet(object):
 	def concatecate_strings(self, attr_name, num, int_unpack=True):
 		alist = []
 		for i in xrange(num):
-			attr = self.attributes['{0}{1}'.format(attr_name, i)]
-			alist.append(attr)
-			del attr
+			alist.append(self.attributes['{0}{1}'.format(attr_name, i)])
+			del self.attributes['{0}{1}'.format(attr_name, i)]
 		if int_unpack:
 			self.attributes[attr_name] = ints_to_string(alist)
 		else:
 			self.attributes[attr_name] = ''.join(alist)
 
+	def process(self, commentary):
+		pass
+
 	def __repr__(self):
-		return '<{0} {1}#{2}>'.format(self.class_name, self.name, self.id)
+		return '<{0} {1}>'.format(self.class_name, self.name)
 
 	def __unicode__(self):
 		return self.name
@@ -68,14 +70,26 @@ class Net(BaseNet):
 class NetObject(Net):
 	class_name = 'NetObject'
 
+	def process(self, commentary):
+		if not self.ignorable:
+			pass
+			# import pdb
+			# pdb.set_trace()
 
-class NetEvent(Net):
+
+class NetEvent(NetObject):
 	class_name = 'NetEvent'
 
 
 class NetMessage(Net):
 	class_name = 'NetMessage'
 	unpacker = None
+
+	def process(self, commentary):
+		if not self.ignorable:
+			pass
+			# import pdb
+			# pdb.set_trace()
 
 	def get_for_type_str(self, params):
 		return self.unpacker.get_string(params)
@@ -93,8 +107,9 @@ class NetMessage(Net):
 				self.attributes[attr] = \
 					getattr(self, 'get_for_type_{0}'.format(atype.__name__))(params)
 			except AttributeError:
-				raise TypeError("Wrong type used for "
-					" attribute \"{0}\" ({1})".format(attr, atype.__name__))
+				raise
+				raise TypeError("There is no handler (get_for_type_{0}) for type {0}"
+					"used in \"{1}\" attribute.".format(atype.__name__, attr))
 
 
 class NetMessageCl(NetMessage):
@@ -111,6 +126,7 @@ class NetObjectInvalid(NetObject):
 
 
 class NetObjectPlayerInput(NetObject):
+	id = 1
 	name = 'PlayerInput'
 	ignorable = True
 
@@ -129,6 +145,7 @@ class NetObjectPlayerInput(NetObject):
 
 
 class NetObjectProjectile(NetObject):
+	id = 2
 	name = 'Projectile'
 	ignorable = True
 	
@@ -143,6 +160,7 @@ class NetObjectProjectile(NetObject):
 
 
 class NetObjectLaser(NetObject):
+	id = 3
 	name = 'Laser'
 	ignorable = True
 
@@ -156,6 +174,7 @@ class NetObjectLaser(NetObject):
 
 
 class NetObjectPickup(NetObject):
+	id = 4
 	name = 'Pickup'
 	ignorable = True
 
@@ -168,6 +187,7 @@ class NetObjectPickup(NetObject):
 
 
 class NetObjectFlag(NetObject):
+	id = 5
 	name = 'Flag'
 	ignorable = True
 
@@ -179,6 +199,7 @@ class NetObjectFlag(NetObject):
 
 
 class NetObjectGameInfo(NetObject):
+	id = 6
 	name = 'GameInfo'
 
 	attr_proto = [
@@ -192,6 +213,15 @@ class NetObjectGameInfo(NetObject):
 		['round_current', int],
 	]
 
+	def process(self, commentary):
+		# import pdb
+		# pdb.set_trace()
+		
+		pass
+		# commentary.set_score_limit(self.score_limit)
+		# commentary.set_time_limit(self.time_limit)
+		# commentary.check_for_restart(self.round_start_tick)
+
 	def clean_up(self):
 		self.attributes.is_team_game = bool(self.attributes.game_flags & 1)
 		self.attributes.is_flag_game = bool(self.attributes.game_flags & 2)
@@ -203,6 +233,7 @@ class NetObjectGameInfo(NetObject):
 
 
 class NetObjectGameData(NetObject):
+	id = 7
 	name = 'GameData'
 
 	attr_proto = [
@@ -212,8 +243,15 @@ class NetObjectGameData(NetObject):
 		['blue_flagcarrier_id', int],
 	]
 
+	def process(self, commentary):
+		pass
+		# commentary.blue_score = self.attributes.blue_score
+		# commentary.red_score = self.attributes.red_score
+		# commentary.update_flagcarriers(self.attributes.blue_flagcarrier,
+		#	self.attributes.red_flagcarrier)
 
 class NetObjectCharacterCore(NetObject):
+	id = 8
 	name = 'CharacterCore'
 	ignorable = True
 
@@ -237,6 +275,7 @@ class NetObjectCharacterCore(NetObject):
 
 
 class NetObjectCharacter(NetObjectCharacterCore):
+	id = 9
 	name = 'Character'
 
 	attr_proto = [
@@ -251,6 +290,7 @@ class NetObjectCharacter(NetObjectCharacterCore):
 
 
 class NetObjectPlayerInfo(NetObject):
+	id = 10
 	name = 'PlayerInfo'
 
 	attr_proto = [
@@ -261,8 +301,15 @@ class NetObjectPlayerInfo(NetObject):
 		['latency', int],
 	]
 
+	def process(self, commentary):
+		pass
+		# commentary.player_waiting.id = self.attributes.client_id
+		# commentary.player_waiting.team = self.attributes.team
+		# commentary.set_player(player_waiting)
+
 
 class NetObjectClientInfo(NetObject):
+	id = 11
 	name = 'ClientInfo'
 
 	attr_proto = [
@@ -289,6 +336,14 @@ class NetObjectClientInfo(NetObject):
 		['color_feet', int],
 	]
 
+	def process(self, commentary):
+		pass
+		# player = Player()
+		# player.name = self.attributes.name
+		# player.clan = self.attributes.clan
+		# player.country = self.attributes.country
+		# commentary.player_waiting = player
+
 	def clean_up(self):
 		self.concatecate_strings('name', 4)
 		self.concatecate_strings('clan', 3)
@@ -296,7 +351,9 @@ class NetObjectClientInfo(NetObject):
 
 
 class NetObjectSpectactorInfo(NetObject):
+	id = 12
 	name = 'SpectactorInfo'
+	ignorable = True
 
 	attr_proto = [
 		['spectactor_id', int],
@@ -306,6 +363,7 @@ class NetObjectSpectactorInfo(NetObject):
 
 
 class NetEventCommon(NetEvent):
+	id = 13
 	name = 'Common'
 	ignorable = True
 
@@ -316,18 +374,22 @@ class NetEventCommon(NetEvent):
 
 
 class NetEventExplosion(NetEventCommon):
+	id = 14
 	name = 'Explosion'
 
 
 class NetEventSpawn(NetEventCommon):
+	id = 15
 	name = 'Spawn'
 
 
 class NetEventHammerHit(NetEventCommon):
+	id = 16
 	name = 'HammerHit'
 
 
 class NetEventDeath(NetEventCommon):
+	id = 17
 	name = 'Death'
 
 	attr_proto = [
@@ -336,6 +398,7 @@ class NetEventDeath(NetEventCommon):
 
 
 class NetEventSoundGlobal(NetEventCommon):
+	id = 18
 	# To be removed in 0.7
 	name = 'SoundGlobal'
 
@@ -345,6 +408,7 @@ class NetEventSoundGlobal(NetEventCommon):
 
 
 class NetEventSoundWorld(NetEventCommon):
+	id = 19
 	name = 'SoundWorld'
 
 	attr_proto = [
@@ -353,6 +417,7 @@ class NetEventSoundWorld(NetEventCommon):
 
 
 class NetEventDamageInd(NetEventCommon):
+	id = 20
 	name = 'DamageInd'
 
 	attr_proto = [
@@ -392,7 +457,13 @@ def get_net_class_for(atype):
 		raise IndexError("Unknown Net class")
 
 
+class NetMessageInvalid(NetMessage):
+	name = 'Invalid'
+	ignorable = True
+
+
 class NetMessageSvMotd(NetMessageSv):
+	id = 1
 	name = 'SvMotd'
 
 	attr_proto = [
@@ -401,6 +472,7 @@ class NetMessageSvMotd(NetMessageSv):
 
 
 class NetMessageSvBroadcast(NetMessageSv):
+	id = 2
 	name = 'SvBroadcast'
 
 	attr_proto = [
@@ -409,6 +481,7 @@ class NetMessageSvBroadcast(NetMessageSv):
 
 
 class NetMessageSvChat(NetMessageSv):
+	id = 3
 	name = 'SvChat'
 
 	attr_proto = [
@@ -417,8 +490,17 @@ class NetMessageSvChat(NetMessageSv):
 		['message', str],
 	]
 
+	def process(self, commentary):
+		pass
+		# if self.attributes.client_id != -1:
+		# 	commentary.add_chat(team=self.attributes.team,
+		# 		client_id=self.attributes.client_id,
+		# 		message=self.attributes.message)
+		# else:
+		# 	other stuff...
 
 class NetMessageSvKillMsg(NetMessageSv):
+	id = 4
 	name = 'SvKillMsg'
 
 	attr_proto = [
@@ -428,9 +510,16 @@ class NetMessageSvKillMsg(NetMessageSv):
 		['mode_special', int],
 	]
 
+	def process(self, commentary):
+		pass
+		# commentary.add_kill(weapon=self.attributes.weapon,
+		# 	killer=self.attributes.killer, victim=self.attributes.victim,
+		# 	mode_special=self.attributes.mode_special)
 
 class NetMessageSvSoundGlobal(NetMessageSv):
+	id = 5
 	name = 'SvSoundGlobal'
+	ignorable = True
 
 	attr_proto = [
 		['sound_id', int],
@@ -438,19 +527,25 @@ class NetMessageSvSoundGlobal(NetMessageSv):
 
 
 class NetMessageSvTuneParams(NetMessageSv):
+	id = 6
 	name = 'SvTuneParams'
 
 
 class NetMessageSvExtraProjectile(NetMessageSv):
+	id = 7
 	name = 'SvExtraProjectile'
+	ignorable = True
 
 
 class NetMessageSvReadyToEnter(NetMessageSv):
+	id = 8
 	name = 'SvReadyToEnter'
 
 
 class NetMessageSvWeaponPickup(NetMessageSv):
+	id = 9
 	name = 'SvWeaponPickup'
+	ignorable = True
 
 	attr_proto = [
 		['weapon', int],
@@ -458,6 +553,7 @@ class NetMessageSvWeaponPickup(NetMessageSv):
 
 
 class NetMessageSvEmoticon(NetMessageSv):
+	id = 10
 	name = 'SvEmoticon'
 
 	attr_proto = [
@@ -467,10 +563,12 @@ class NetMessageSvEmoticon(NetMessageSv):
 
 
 class NetMessageSvVoteClearOptions(NetMessageSv):
+	id = 11
 	name = 'SvVoteClearOptions'
 
 
 class NetMessageSvVoteOptionListAdd(NetMessageSv):
+	id = 12
 	name = 'SvVoteOptionListAdd'
 
 	attr_proto = [
@@ -497,6 +595,7 @@ class NetMessageSvVoteOptionListAdd(NetMessageSv):
 
 
 class NetMessageSvVoteOptionAdd(NetMessageSv):
+	id = 13
 	name = 'SvVoteOptionAdd'
 
 	attr_proto = [
@@ -505,6 +604,7 @@ class NetMessageSvVoteOptionAdd(NetMessageSv):
 
 
 class NetMessageSvVoteOptionRemove(NetMessageSv):
+	id = 14
 	name = 'SvVoteOptionRemove'
 
 	attr_proto = [
@@ -513,6 +613,7 @@ class NetMessageSvVoteOptionRemove(NetMessageSv):
 
 
 class NetMessageSvVoteSet(NetMessageSv):
+	id = 15
 	name = 'SvVoteSet'
 
 	attr_proto = [
@@ -523,17 +624,20 @@ class NetMessageSvVoteSet(NetMessageSv):
 
 
 class NetMessageSvVoteStatus(NetMessageSv):
+	id = 16
 	name = 'SvVoteStatus'
+	ignorable = True
 
 	attr_proto = [
 		['yes', int],
-		['no', str],
-		['pass', str],
-		['total', str],
+		['no', int],
+		['pass', int],
+		['total', int],
 	]
 
 
 class NetMessageClSay(NetMessageCl):
+	id = 17
 	name = 'ClSay'
 
 	attr_proto = [
@@ -543,6 +647,7 @@ class NetMessageClSay(NetMessageCl):
 
 
 class NetMessageClSetTeam(NetMessageCl):
+	id = 18
 	name = 'ClSetTeam'
 
 	attr_proto = [
@@ -551,6 +656,7 @@ class NetMessageClSetTeam(NetMessageCl):
 
 
 class NetMessageClSetSpectactorMode(NetMessageCl):
+	id = 19
 	name = 'ClSetSpectactorMode'
 
 	attr_proto = [
@@ -559,6 +665,7 @@ class NetMessageClSetSpectactorMode(NetMessageCl):
 
 
 class NetMessageClStartInfo(NetMessageCl):
+	id = 20
 	name = 'ClStartInfo'
 
 	attr_proto = [
@@ -573,6 +680,7 @@ class NetMessageClStartInfo(NetMessageCl):
 
 
 class NetMessageClChangeInfo(NetMessageCl):
+	id = 21
 	name = 'ClChangeInfo'
 
 	attr_proto = [
@@ -587,10 +695,12 @@ class NetMessageClChangeInfo(NetMessageCl):
 
 
 class NetMessageClKill(NetMessageCl):
+	id = 22
 	name = 'ClKill'
 
 
 class NetMessageClEmoticon(NetMessageCl):
+	id = 23
 	name = 'ClEmoticon'
 
 	attr_proto = [
@@ -599,6 +709,7 @@ class NetMessageClEmoticon(NetMessageCl):
 
 
 class NetMessageClVote(NetMessageCl):
+	id = 24
 	name = 'ClVote'
 
 	attr_proto = [
@@ -607,6 +718,7 @@ class NetMessageClVote(NetMessageCl):
 
 
 class NetMessageClCallVote(NetMessageCl):
+	id = 25
 	name = 'ClCallVote'
 
 	attr_proto = [
@@ -617,6 +729,7 @@ class NetMessageClCallVote(NetMessageCl):
 
 
 NET_MESSAGES = [
+	NetMessageInvalid,
 	# Server messages
 	NetMessageSvMotd,
 	NetMessageSvBroadcast,
