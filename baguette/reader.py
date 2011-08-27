@@ -6,6 +6,7 @@ except ImportError:
 from struct import pack, unpack
 import struct
 
+from commentary import Commentary
 from constants import *
 from huffman import Huffman
 from intpack import int_decompress
@@ -66,7 +67,7 @@ class DemoReader(object):
 
 		self.info = DemoInfo()
 
-		self.net_objs = []
+		self.commentary = Commentary()
 
 		# skip the commercials (map)
 		self.f.seek(HEADER_SIZE + self.header.map_size)
@@ -81,8 +82,8 @@ class DemoReader(object):
 
 		# add game commentary
 		# self.process_game()
-		import pdb
-		pdb.set_trace()
+		# import pdb
+		# pdb.set_trace()
 		
 
 	def find_keyframes(self):
@@ -153,9 +154,6 @@ class DemoReader(object):
 		return (atype, size, tick)
 
 	def do_tick(self):
-		data_size = 0
-		got_snapshot = False
-
 		chunk_tick = self.info.current_tick
 
 		while True:
@@ -167,7 +165,7 @@ class DemoReader(object):
 			if chunk_size:
 				compressed = self.f.read(chunk_size)
 				if len(compressed) != chunk_size:
-					raise InvalidDemo("Error reading chunk")
+					raise DemoFileEnded("Error reading chunk")
 
 				decompressed = self.huffman.decompress(compressed)
 				
@@ -205,10 +203,10 @@ class DemoReader(object):
 					id = type_and_id & 0xffff
 
 					netobj = get_net_class_for(atype)()
-					netobj.id = id
 					netobj.assign_fields(item[1:])
 
-					self.net_objs.append(netobj)
+					if not netobj.ignorable:
+						netobj.process(self.commentary)
 
 			elif chunk_type == CHUNKTYPEFLAG_TICKMARKER:
 				break
@@ -223,105 +221,9 @@ class DemoReader(object):
 					self.do_message(msg_id, unpacker)
 
 	def do_message(self, msg_id, unpacker):
-
-		# if msg_id == NETMSGTYPE_SV_EXTRAPROJECTILE:
-		# 	return
-		# elif msg_id == NETMSGTYPE_SV_TUNEPARAMS:
-		# 	return
-
 		message = get_net_message_for(msg_id)()
 		message.unpacker = unpacker
-
 		message.collect_data()
 
-		# # raw_msg = 
-		# void *pRawMsg = m_NetObjHandler.SecureUnpackMsg(MsgID, pUnpacker);
-		# if(!pRawMsg)
-		# {
-		# 	char aBuf[256];
-		# 	str_format(aBuf, sizeof(aBuf), "dropped weird message '%s' (%d), failed on '%s'", m_NetObjHandler.GetMsgName(MsgID), MsgID, m_NetObjHandler.FailedMsgOn());
-		# 	Console()->Print(IConsole::OUTPUT_LEVEL_ADDINFO, "client", aBuf);
-		# 	return;
-		# }
-		# 
-		# // TODO: this should be done smarter
-		# for(int i = 0; i < m_All.m_Num; i++)
-		# 	m_All.m_paComponents[i]->OnMessage(MsgID, pRawMsg);
-		# 
-		# if(MsgID == NETMSGTYPE_SV_READYTOENTER)
-		# {
-		# 	Client()->EnterGame();
-		# }
-		# else if(MsgID == NETMSGTYPE_SV_EMOTICON)
-		# {
-		# 	CNetMsg_Sv_Emoticon *pMsg = (CNetMsg_Sv_Emoticon *)pRawMsg;
-		# 
-		# 	// apply
-		# 	m_aClients[pMsg->m_ClientID].m_Emoticon = pMsg->m_Emoticon;
-		# 	m_aClients[pMsg->m_ClientID].m_EmoticonStart = Client()->GameTick();
-		# }
-		# else if(MsgID == NETMSGTYPE_SV_SOUNDGLOBAL)
-		# {
-		# 	if(m_SuppressEvents)
-		# 		return;
-		# 
-		# 	// don't enqueue pseudo-global sounds from demos (created by PlayAndRecord)
-		# 	CNetMsg_Sv_SoundGlobal *pMsg = (CNetMsg_Sv_SoundGlobal *)pRawMsg;
-		# 	if(pMsg->m_SoundID == SOUND_CTF_DROP || pMsg->m_SoundID == SOUND_CTF_RETURN ||
-		# 		pMsg->m_SoundID == SOUND_CTF_CAPTURE || pMsg->m_SoundID == SOUND_CTF_GRAB_EN ||
-		# 		pMsg->m_SoundID == SOUND_CTF_GRAB_PL)
-		# 		g_GameClient.m_pSounds->Enqueue(CSounds::CHN_GLOBAL, pMsg->m_SoundID);
-		# 	else
-		# 		g_GameClient.m_pSounds->Play(CSounds::CHN_GLOBAL, pMsg->m_SoundID, 1.0f, vec2(0,0));
-		# }
-		# else if(MsgID == NETMSGTYPE_SV_PLAYERTIME)
-		# {
-		# 	CNetMsg_Sv_PlayerTime *pMsg = (CNetMsg_Sv_PlayerTime *)pRawMsg;
-		# 	m_aClients[pMsg->m_ClientID].m_Score = (float)pMsg->m_Time/1000.0f;
-		# }
-		# else if(MsgID == NETMSGTYPE_SV_CHAT)
-		# {
-		# 	CNetMsg_Sv_Chat *pMsg = (CNetMsg_Sv_Chat *)pRawMsg;
-		# 	if(pMsg->m_ClientID == -1 && str_find(pMsg->m_pMessage, " finished in: "))
-		# 	{
-		# 		const char* pMessage = pMsg->m_pMessage;
-		# 
-		# 		int Num = 0;
-		# 		while(str_comp_num(pMessage, " finished in: ", 14))
-		# 		{
-		# 			pMessage++;
-		# 			Num++;
-		# 			if(!pMessage[0])
-		# 				return;
-		# 		}
-		# 
-		# 		int Minutes = 0;
-		# 		float Seconds = 0.0f;
-		# 
-		# 		// store the name
-		# 		char Playername[MAX_NAME_LENGTH];
-		# 		str_copy(Playername, pMsg->m_pMessage, Num+1);
-		# 
-		# 		// get time
-		# 		if(sscanf(pMessage, " finished in: %d minute(s) %f", &Minutes, &Seconds) == 2)
-		# 		{
-		# 			int PlayerID = -1;
-		# 			for(int i = 0; i < MAX_CLIENTS; i++)
-		# 				if(!str_comp(Playername, m_aClients[i].m_aName))
-		# 				{
-		# 					PlayerID = i;
-		# 					break;
-		# 				}
-		# 
-		# 			// some proof
-		# 			if(PlayerID < 0)
-		# 				return;
-		# 
-		# 			float Time = (float)(Minutes*60) + Seconds;
-		# 
-		# 			if(m_aClients[PlayerID].m_Score == 0 || Time < m_aClients[PlayerID].m_Score)
-		# 				m_aClients[PlayerID].m_Score = Time;
-		# 		}
-		# 	}
-		# }
-		# 
+		if not message.ignorable:
+			message.process(self.commentary)
