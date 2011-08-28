@@ -1,5 +1,4 @@
-from intpack import *
-from utils import *
+from intpack import int_pack, int_unpack
 
 
 def str_sanitize_strong(string):

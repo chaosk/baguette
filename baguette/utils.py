@@ -26,13 +26,12 @@ def int32(x):
 
 
 def ints_to_string(num):
-	string = ''
-	for val in num:
-		string += chr(max(0, min(((val>>24)&0xff)-128, 255)))
-		string += chr(max(0, min(((val>>16)&0xff)-128, 255)))
-		string += chr(max(0, min(((val>>8)&0xff)-128, 255)))
-		string += chr(max(0, min((val&0xff)-128, 255)))
-	return string.partition('\x00')[0]
+	return ''.join(["{0}{1}{2}{3}".format(
+		chr(max(0, min(((val>>24)&0xff)-128, 255))),
+		chr(max(0, min(((val>>16)&0xff)-128, 255))),
+		chr(max(0, min(((val>>8)&0xff)-128, 255))),
+		chr(max(0, min((val&0xff)-128, 255)))
+	) for val in num]).rstrip('\x00')
 
 
 def int_to_chars(num):

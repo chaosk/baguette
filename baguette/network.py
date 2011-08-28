@@ -1,4 +1,5 @@
 from commentary import Player
+from constants import *
 from utils import ints_to_string
 from packer import SANITIZE_CC, SKIP_START_WHITESPACES
 
@@ -43,10 +44,11 @@ class BaseNet(object):
 		pass
 
 	def concatecate_strings(self, attr_name, num, int_unpack=True):
-		alist = []
-		for i in xrange(num):
-			alist.append(self.attributes['{0}{1}'.format(attr_name, i)])
-			del self.attributes['{0}{1}'.format(attr_name, i)]
+		# alist = []
+		# for i in xrange(num):
+		# 	alist.append(self.attributes['{0}{1}'.format(attr_name, i)])
+		# 	del self.attributes['{0}{1}'.format(attr_name, i)]
+		alist = [self.attributes['{0}{1}'.format(attr_name, i)] for i in xrange(num)]
 		if int_unpack:
 			self.attributes[attr_name] = ints_to_string(alist)
 		else:
@@ -71,10 +73,7 @@ class NetObject(Net):
 	class_name = 'NetObject'
 
 	def process(self, commentary):
-		if not self.ignorable:
-			pass
-			# import pdb
-			# pdb.set_trace()
+		pass
 
 
 class NetEvent(NetObject):
@@ -86,10 +85,7 @@ class NetMessage(Net):
 	unpacker = None
 
 	def process(self, commentary):
-		if not self.ignorable:
-			pass
-			# import pdb
-			# pdb.set_trace()
+		pass
 
 	def get_for_type_str(self, params):
 		return self.unpacker.get_string(params)
@@ -214,13 +210,9 @@ class NetObjectGameInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		# import pdb
-		# pdb.set_trace()
-		
-		pass
-		# commentary.set_score_limit(self.score_limit)
-		# commentary.set_time_limit(self.time_limit)
-		# commentary.check_for_restart(self.round_start_tick)
+		commentary.check_for_restart(self.attributes.round_start_tick)
+		commentary.set_score_limit(self.attributes.score_limit)
+		commentary.set_time_limit(self.attributes.time_limit)
 
 	def clean_up(self):
 		self.attributes.is_team_game = bool(self.attributes.game_flags & 1)
@@ -244,11 +236,10 @@ class NetObjectGameData(NetObject):
 	]
 
 	def process(self, commentary):
-		pass
-		# commentary.blue_score = self.attributes.blue_score
-		# commentary.red_score = self.attributes.red_score
-		# commentary.update_flagcarriers(self.attributes.blue_flagcarrier,
-		#	self.attributes.red_flagcarrier)
+		commentary.set_team_scores(self.attributes.blue_score,
+			self.attributes.red_score)
+		commentary.set_flagcarriers(self.attributes.blue_flagcarrier_id,
+			self.attributes.red_flagcarrier_id)
 
 class NetObjectCharacterCore(NetObject):
 	id = 8
@@ -302,10 +293,9 @@ class NetObjectPlayerInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		pass
-		# commentary.player_waiting.id = self.attributes.client_id
-		# commentary.player_waiting.team = self.attributes.team
-		# commentary.set_player(player_waiting)
+		commentary.game.player_waiting.team = self.attributes.team
+		commentary.set_player(self.attributes.client_id,
+			commentary.game.player_waiting)
 
 
 class NetObjectClientInfo(NetObject):
@@ -337,12 +327,11 @@ class NetObjectClientInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		pass
-		# player = Player()
-		# player.name = self.attributes.name
-		# player.clan = self.attributes.clan
-		# player.country = self.attributes.country
-		# commentary.player_waiting = player
+		player = Player()
+		player.name = self.attributes.name
+		player.clan = self.attributes.clan
+		player.country = self.attributes.country
+		commentary.game.player_waiting = player
 
 	def clean_up(self):
 		self.concatecate_strings('name', 4)
@@ -376,21 +365,25 @@ class NetEventCommon(NetEvent):
 class NetEventExplosion(NetEventCommon):
 	id = 14
 	name = 'Explosion'
+	ignorable = True
 
 
 class NetEventSpawn(NetEventCommon):
 	id = 15
 	name = 'Spawn'
+	ignorable = True
 
 
 class NetEventHammerHit(NetEventCommon):
 	id = 16
 	name = 'HammerHit'
+	ignorable = True
 
 
 class NetEventDeath(NetEventCommon):
 	id = 17
 	name = 'Death'
+	ignorable = True
 
 	attr_proto = [
 		['client_id', int],
@@ -401,6 +394,7 @@ class NetEventSoundGlobal(NetEventCommon):
 	id = 18
 	# To be removed in 0.7
 	name = 'SoundGlobal'
+	ignorable = True
 
 	attr_proto = [
 		['sound_id', int],
@@ -410,6 +404,7 @@ class NetEventSoundGlobal(NetEventCommon):
 class NetEventSoundWorld(NetEventCommon):
 	id = 19
 	name = 'SoundWorld'
+	ignorable = True
 
 	attr_proto = [
 		['sound_id', int],
@@ -419,6 +414,7 @@ class NetEventSoundWorld(NetEventCommon):
 class NetEventDamageInd(NetEventCommon):
 	id = 20
 	name = 'DamageInd'
+	ignorable = True
 
 	attr_proto = [
 		['angle', int],
@@ -491,13 +487,17 @@ class NetMessageSvChat(NetMessageSv):
 	]
 
 	def process(self, commentary):
-		pass
-		# if self.attributes.client_id != -1:
-		# 	commentary.add_chat(team=self.attributes.team,
-		# 		client_id=self.attributes.client_id,
-		# 		message=self.attributes.message)
+		if self.attributes.client_id != TEAM_SPECTACTOR:
+			commentary.chat(team=self.attributes.team,
+				client_id=self.attributes.client_id,
+				message=self.attributes.message)
+		else:
+			if "flag was" in self.attributes.message:
+				pass
+		#### 
 		# else:
 		# 	other stuff...
+		# 	flag captures parsing
 
 class NetMessageSvKillMsg(NetMessageSv):
 	id = 4

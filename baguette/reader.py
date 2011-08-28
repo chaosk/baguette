@@ -1,18 +1,20 @@
-try:
-	from cStringIO import StringIO
-except ImportError:
-	from StringIO import StringIO
-
 from struct import pack, unpack
 import struct
 
+import logging
+logger = logging.getLogger('baguette.reader')
+
+import os
 from commentary import Commentary
 from constants import *
 from huffman import Huffman
 from intpack import int_decompress
-from network import *
-from packer import *
+from network import get_net_class_for, get_net_message_for
+from packer import Unpacker
 from utils import int_to_chars, chars_to_int
+
+from progressbar import ProgressBar, AnimatedMarker, Bar
+from progressbar import ETA, FormatLabel, Percentage
 
 
 class InvalidDemo(Exception):
@@ -41,6 +43,11 @@ class Header(object):
 		self.timestamp = [chars_to_int([ord(m) for m in tuple(s)]) \
 			if len(s) == 4 else s.strip('\x00') \
 			if isinstance(s, str) else s for s in header]
+		logger.info("Header was read.")
+		logger.info("Size of this demo is {0} bytes."
+			" It's {1:02}:{2:02} long (~{3} ticks).".format(
+				os.stat(f.name).st_size, self.length // 60,
+				self.length % 60, self.length * 50))
 
 
 class KeyFrame(object):
@@ -60,7 +67,7 @@ class DemoInfo(object):
 
 class DemoReader(object):
 
-	def __init__(self, demo_file):
+	def __init__(self, demo_file, cli=False):
 		self.f = demo_file
 		self.header = Header(self.f)
 		self.huffman = Huffman()
@@ -73,12 +80,27 @@ class DemoReader(object):
 		self.f.seek(HEADER_SIZE + self.header.map_size)
 
 		self.find_keyframes()
+		logger.debug("Finished finding keyframes")
 
-		while True:
-			try:
-				self.do_tick()
-			except DemoFileEnded:
-				break
+
+		if cli:
+			maxval = self.info.last_tick - self.info.first_tick
+			pbar = ProgressBar(
+				widgets=["Processing demo...", Percentage(), Bar(), ETA()],
+				maxval=maxval).start()
+			while True:
+				try:
+					self.do_tick()
+				except DemoFileEnded:
+					break
+				pbar.update(self.info.current_tick - self.info.first_tick)
+			pbar.finish()
+		else:
+			while True:
+				try:
+					self.do_tick()
+				except DemoFileEnded:
+					break
 
 		# add game commentary
 		# self.process_game()
@@ -108,7 +130,9 @@ class DemoReader(object):
 
 				if self.info.first_tick == None:
 					self.info.first_tick = chunk_tick
-				self.info.last_tick = chunk_tick
+				if chunk_tick > 2:
+					# dirty.
+					self.info.last_tick = chunk_tick
 			elif chunk_size:
 				self.f.read(chunk_size)
 
@@ -161,6 +185,9 @@ class DemoReader(object):
 				chunk_type, chunk_size, chunk_tick = self.read_chunk_header(chunk_tick)
 			except DemoFileEnded:
 				raise
+
+			if chunk_size and chunk_tick:
+				self.info.current_tick = chunk_tick
 
 			if chunk_size:
 				compressed = self.f.read(chunk_size)

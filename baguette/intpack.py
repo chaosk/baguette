@@ -61,7 +61,4 @@ def int_decompress(input):
 
 
 def int_compress(input):
-	out = ''
-	for num in input:
-		out += int_pack(num)
-	return out
+	return ''.join([int_pack(num) for num in input])

@@ -161,7 +161,7 @@ class Huffman(object):
 		eof = id(self.nodes[HUFFMAN_EOF_SYMBOL])
 		node_id = None
 		output = []
-		while 1:
+		while True:
 			node = None
 			if bit_count >= HUFFMAN_LUTBITS:
 				node_num = bits&HUFFMAN_LUTMASK
@@ -179,7 +179,7 @@ class Huffman(object):
 				node_id = id(self.decode_lut[node_num])
 
 			if node is None:
-				return ValueError
+				raise ValueError
 
 			if node.num_bits:
 				bits >>= node.num_bits
