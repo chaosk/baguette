@@ -15,13 +15,64 @@ CHUNKTYPE_MESSAGE = 2
 CHUNKTYPE_DELTA = 3
 CHUNKFLAG_BIGSIZE = 0x10
 
+CHAT_SERVER = -1
+
 CHAT_ALL = -2
-TEAM_SPECTACTOR = -1
+TEAM_SPECTATOR = -1
 TEAM_RED = 0
 TEAM_BLUE = 1
 TEAMS = {
 	CHAT_ALL: "All",
-	TEAM_SPECTACTOR: "Spectactor",
+	TEAM_SPECTATOR: "Spectator",
 	TEAM_RED: "Red",
 	TEAM_BLUE: "Blue",
 }
+
+TEAM_NAMES = {
+	'game': CHAT_ALL,
+	'spectators': TEAM_SPECTATOR,
+	'red team': TEAM_RED,
+	'blue team': TEAM_BLUE,
+}
+
+OPPONENTS = {
+	TEAM_BLUE: TEAM_RED,
+	TEAM_RED: TEAM_BLUE,
+}
+
+FLAG_CAPTURES_TO_TEAMS = {
+	'blue': TEAM_RED,
+	'red': TEAM_BLUE,
+}
+
+FLAG_MISSING = -3
+FLAG_ATSTAND = -2
+FLAG_TAKEN = -1
+FLAG_STATES = {
+	FLAG_MISSING: "No flag",
+	FLAG_ATSTAND: "Flag at stand",
+	FLAG_TAKEN: "Flag taken",
+}
+
+WEAPON_GAME = -3 # team switching etc
+WEAPON_SELF = -2 # console kill command
+WEAPON_WORLD = -1 # death tiles etc
+WEAPON_HAMMER = 0
+WEAPON_GUN = 1
+WEAPON_SHOTGUN = 2
+WEAPON_GRENADE = 3
+WEAPON_RIFLE = 4
+WEAPON_NINJA = 5
+WEAPONS = {
+	WEAPON_GAME: "Game",
+	WEAPON_SELF: "Selfkill",
+	WEAPON_WORLD: "World", # count as suicide
+	WEAPON_HAMMER: "Hammer",
+	WEAPON_GUN: "Pistol",
+	WEAPON_SHOTGUN: "Shotgun",
+	WEAPON_GRENADE: "Grenade",
+	WEAPON_RIFLE: "Rifle",
+	WEAPON_NINJA: "Ninja",
+}
+
+TICKS_PER_SECOND = 25 # I'm correct, don't change me

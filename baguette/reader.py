@@ -7,6 +7,7 @@ logger = logging.getLogger('baguette.reader')
 import os
 from commentary import Commentary
 from constants import *
+from delta import Delta, Snapshot
 from huffman import Huffman
 from intpack import int_decompress
 from network import get_net_class_for, get_net_message_for
@@ -45,9 +46,9 @@ class Header(object):
 			if isinstance(s, str) else s for s in header]
 		logger.info("Header was read.")
 		logger.info("Size of this demo is {0} bytes."
-			" It's {1:02}:{2:02} long (~{3} ticks).".format(
-				os.stat(f.name).st_size, self.length // 60,
-				self.length % 60, self.length * 50))
+			" It's {2:02}:{3:02} long (~{1} ticks).".format(
+				os.stat(f.name).st_size, self.length * 50,
+				*divmod(self.length, 60)))
 
 
 class KeyFrame(object):
@@ -62,6 +63,7 @@ class DemoInfo(object):
 		self.first_tick = None
 		self.current_tick = None
 		self.last_tick = None
+		self.last_snapshot = None
 		self.key_frames = []
 
 
@@ -71,6 +73,7 @@ class DemoReader(object):
 		self.f = demo_file
 		self.header = Header(self.f)
 		self.huffman = Huffman()
+		self.delta = Delta()
 
 		self.info = DemoInfo()
 
@@ -93,6 +96,7 @@ class DemoReader(object):
 					self.do_tick()
 				except DemoFileEnded:
 					break
+				self.commentary.next_tick()
 				pbar.update(self.info.current_tick - self.info.first_tick)
 			pbar.finish()
 		else:
@@ -101,7 +105,13 @@ class DemoReader(object):
 					self.do_tick()
 				except DemoFileEnded:
 					break
+				self.commentary.next_tick()
 
+		comm = self.commentary.get_output()
+
+		import pdb
+		pdb.set_trace()
+		
 		# add game commentary
 		# self.process_game()
 		# import pdb
@@ -205,15 +215,18 @@ class DemoReader(object):
 					raise InvalidDemo("Error during intpack decompression")
 
 			if chunk_type == CHUNKTYPE_DELTA:
-				# NotImplemented
-				# 
-				# There was no need to implement it.
-				pass
+				# <del>There was no need to implement it.</del>
+				# <ins>There was need to implement it.</ins>
+				# pass
+				snapshot = self.delta.unpack(data)
+				self.do_snapshot(snapshot)
 			elif chunk_type == CHUNKTYPE_SNAPSHOT:
 				data_pointer = 2
 				data_size, item_count = data[:data_pointer]
 				offsets = data[data_pointer:data_pointer+item_count]
 				data_pointer = data_pointer + item_count
+				
+				snapshot = Snapshot()
 				
 				for i in xrange(item_count):
 					try:
@@ -225,15 +238,13 @@ class DemoReader(object):
 					item = data[data_pointer:data_pointer+item_size]
 					data_pointer = data_pointer + item_size
 
-					type_and_id = item[0]
+					type_and_id, item_data = item[0], item[1:]
 					atype = type_and_id >> 16
 					id = type_and_id & 0xffff
 
-					netobj = get_net_class_for(atype)()
-					netobj.assign_fields(item[1:])
+					snapshot.new_item(type_and_id, item_data)
 
-					if not netobj.ignorable:
-						netobj.process(self.commentary)
+				self.do_snapshot(snapshot)
 
 			elif chunk_type == CHUNKTYPEFLAG_TICKMARKER:
 				break
@@ -246,6 +257,16 @@ class DemoReader(object):
 
 				if not sys:
 					self.do_message(msg_id, unpacker)
+
+	def do_snapshot(self, snapshot):
+		for key, item in snapshot.items.iteritems():
+			netobj = get_net_class_for(item.type())()
+			netobj.assign_fields(item.data)
+
+			if not netobj.ignorable:
+				netobj.process(self.commentary)
+
+		self.delta.set_snapshot(snapshot)
 
 	def do_message(self, msg_id, unpacker):
 		message = get_net_message_for(msg_id)()

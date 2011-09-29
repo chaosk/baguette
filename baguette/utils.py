@@ -15,6 +15,7 @@ Sources:
 
 def int32(x):
 	if x>0xFFFFFFFF:
+		print x
 		raise OverflowError
 	if x>0x7FFFFFFF:
 		x=int(0x100000000-x)
@@ -25,13 +26,17 @@ def int32(x):
 	return x
 
 
+def safe_chr(i):
+	return chr(max(0, min(i if i >= 0 else 256 + i, 256)))
+
+
 def ints_to_string(num):
-	return ''.join(["{0}{1}{2}{3}".format(
-		chr(max(0, min(((val>>24)&0xff)-128, 255))),
-		chr(max(0, min(((val>>16)&0xff)-128, 255))),
-		chr(max(0, min(((val>>8)&0xff)-128, 255))),
-		chr(max(0, min((val&0xff)-128, 255)))
-	) for val in num]).rstrip('\x00')
+	return ''.join([''.join([
+		chr(max(0, min(((val>>24)&0xff)-128 if ((val>>24)&0xff)-128 >= 0 else 256 + ((val>>24)&0xff)-128, 256))),
+		chr(max(0, min(((val>>16)&0xff)-128 if ((val>>16)&0xff)-128 >= 0 else 256 + ((val>>16)&0xff)-128, 256))),
+		chr(max(0, min(((val>>8)&0xff)-128 if ((val>>8)&0xff)-128 >= 0 else 256 + ((val>>8)&0xff)-128, 256))),
+		chr(max(0, min((val&0xff)-128 if (val&0xff)-128 >= 0 else 256 + (val&0xff)-128, 256))),
+		]) for val in num]).partition('\x00')[0]
 
 
 def int_to_chars(num):

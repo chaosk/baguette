@@ -1,3 +1,4 @@
+import re
 from commentary import Player
 from constants import *
 from utils import ints_to_string
@@ -7,12 +8,12 @@ class Tick(int):
 	pass
 
 
-class DictOnSteroids(dict):
-	def __getattr__(self, name):
-		try:
-			return self.__getitem__(name)
-		except KeyError:
-			raise AttributeError(name)
+# class DictOnSteroids(dict):
+# 	def __getattr__(self, name):
+# 		try:
+# 			return self.__getitem__(name)
+# 		except KeyError:
+# 			raise AttributeError(name)
 
 
 class BaseNet(object):
@@ -21,21 +22,17 @@ class BaseNet(object):
 	ignorable = False
 
 	def __init__(self):
-		self.attributes = DictOnSteroids()
+		self.attributes = {}
 
 	def get_attr_proto(self):
-		return []
+		return self.attr_proto
 
 	def assign_fields(self, values):
 		if self.ignorable:
 			return # ?!?!?!?
 		attr_proto = self.get_attr_proto()
 		for i in xrange(len(attr_proto)):
-			if not isinstance(values[i], attr_proto[i][1]):
-				# try to simply cast it
-				values[i] = attr_proto[i][1](values[i])
-			if not isinstance(values[i], attr_proto[i][1]):
-				raise TypeError
+			values[i] = attr_proto[i][1](values[i])
 			self.attributes[attr_proto[i][0]] = values[i]
 
 		self.clean_up()
@@ -44,10 +41,6 @@ class BaseNet(object):
 		pass
 
 	def concatecate_strings(self, attr_name, num, int_unpack=True):
-		# alist = []
-		# for i in xrange(num):
-		# 	alist.append(self.attributes['{0}{1}'.format(attr_name, i)])
-		# 	del self.attributes['{0}{1}'.format(attr_name, i)]
 		alist = [self.attributes['{0}{1}'.format(attr_name, i)] for i in xrange(num)]
 		if int_unpack:
 			self.attributes[attr_name] = ints_to_string(alist)
@@ -66,7 +59,7 @@ class BaseNet(object):
 
 class Net(BaseNet):
 	def get_attr_proto(self):
-		return super(Net, self).get_attr_proto() + [a+[None]*(3-len(a)) for a in self.attr_proto]
+		return super(Net, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 class NetObject(Net):
@@ -103,7 +96,6 @@ class NetMessage(Net):
 				self.attributes[attr] = \
 					getattr(self, 'get_for_type_{0}'.format(atype.__name__))(params)
 			except AttributeError:
-				raise
 				raise TypeError("There is no handler (get_for_type_{0}) for type {0}"
 					"used in \"{1}\" attribute.".format(atype.__name__, attr))
 
@@ -210,17 +202,17 @@ class NetObjectGameInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		commentary.check_for_restart(self.attributes.round_start_tick)
-		commentary.set_score_limit(self.attributes.score_limit)
-		commentary.set_time_limit(self.attributes.time_limit)
+		commentary.check_for_restart(self.attributes['round_start_tick'])
+		commentary.set_score_limit(self.attributes['score_limit'])
+		commentary.set_time_limit(self.attributes['time_limit'])
 
 	def clean_up(self):
-		self.attributes.is_team_game = bool(self.attributes.game_flags & 1)
-		self.attributes.is_flag_game = bool(self.attributes.game_flags & 2)
+		self.attributes['is_team_game'] = bool(self.attributes['game_flags'] & 1)
+		self.attributes['is_flag_game'] = bool(self.attributes['game_flags'] & 2)
 		del self.attributes['game_flags']
-		self.attributes.is_gameover = bool(self.attributes.gamestate_flags & 1)
-		self.attributes.is_suddendeath = bool(self.attributes.gamestate_flags & 2)
-		self.attributes.is_paused = bool(self.attributes.gamestate_flags & 4)
+		self.attributes['is_gameover'] = bool(self.attributes['gamestate_flags'] & 1)
+		self.attributes['is_suddendeath'] = bool(self.attributes['gamestate_flags'] & 2)
+		self.attributes['is_paused'] = bool(self.attributes['gamestate_flags'] & 4)
 		del self.attributes['gamestate_flags']
 
 
@@ -229,21 +221,22 @@ class NetObjectGameData(NetObject):
 	name = 'GameData'
 
 	attr_proto = [
-		['blue_score', int],
 		['red_score', int],
+		['blue_score', int],
 		['red_flagcarrier_id', int],
 		['blue_flagcarrier_id', int],
 	]
 
 	def process(self, commentary):
-		commentary.set_team_scores(self.attributes.blue_score,
-			self.attributes.red_score)
-		commentary.set_flagcarriers(self.attributes.blue_flagcarrier_id,
-			self.attributes.red_flagcarrier_id)
+		commentary.set_team_scores(self.attributes['blue_score'],
+			self.attributes['red_score'])
+		commentary.set_flagcarriers(self.attributes['blue_flagcarrier_id'],
+			self.attributes['red_flagcarrier_id'])
 
 class NetObjectCharacterCore(NetObject):
 	id = 8
 	name = 'CharacterCore'
+	ignorable = True
 	ignorable = True
 
 	attr_proto = [
@@ -268,6 +261,7 @@ class NetObjectCharacterCore(NetObject):
 class NetObjectCharacter(NetObjectCharacterCore):
 	id = 9
 	name = 'Character'
+	ignorable = True
 
 	attr_proto = [
 		['player_flags', int],
@@ -278,6 +272,9 @@ class NetObjectCharacter(NetObjectCharacterCore):
 		['emote', int],
 		['attack_tick', int],
 	]
+	
+	def get_attr_proto(self):
+		return super(NetObjectCharacter, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 class NetObjectPlayerInfo(NetObject):
@@ -293,9 +290,13 @@ class NetObjectPlayerInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		commentary.game.player_waiting.team = self.attributes.team
-		commentary.set_player(self.attributes.client_id,
-			commentary.game.player_waiting)
+		client_id = self.attributes['client_id']
+		try:
+			commentary.game.players[client_id].score = self.attributes['score']
+		except KeyError:
+			commentary.game.player_waiting.team = self.attributes['team']
+			commentary.set_player(client_id,
+				commentary.game.player_waiting)
 
 
 class NetObjectClientInfo(NetObject):
@@ -328,9 +329,11 @@ class NetObjectClientInfo(NetObject):
 
 	def process(self, commentary):
 		player = Player()
-		player.name = self.attributes.name
-		player.clan = self.attributes.clan
-		player.country = self.attributes.country
+		player.game = commentary.game
+		player.nickname = self.attributes['name']
+		player.clanname = self.attributes['clan']
+		player.country = self.attributes['country']
+		player.join_timestamp = commentary.game.current_timestamp
 		commentary.game.player_waiting = player
 
 	def clean_up(self):
@@ -339,13 +342,13 @@ class NetObjectClientInfo(NetObject):
 		self.concatecate_strings('skin', 6)
 
 
-class NetObjectSpectactorInfo(NetObject):
+class NetObjectSpectatorInfo(NetObject):
 	id = 12
-	name = 'SpectactorInfo'
+	name = 'SpectatorInfo'
 	ignorable = True
 
 	attr_proto = [
-		['spectactor_id', int],
+		['spectator_id', int],
 		['x', int],
 		['y', int],
 	]
@@ -389,6 +392,9 @@ class NetEventDeath(NetEventCommon):
 		['client_id', int],
 	]
 
+	def get_attr_proto(self):
+		return super(NetEventDeath, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
+
 
 class NetEventSoundGlobal(NetEventCommon):
 	id = 18
@@ -400,6 +406,9 @@ class NetEventSoundGlobal(NetEventCommon):
 		['sound_id', int],
 	]
 
+	def get_attr_proto(self):
+		return super(NetEventSoundGlobal, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
+
 
 class NetEventSoundWorld(NetEventCommon):
 	id = 19
@@ -410,6 +419,9 @@ class NetEventSoundWorld(NetEventCommon):
 		['sound_id', int],
 	]
 
+	def get_attr_proto(self):
+		return super(NetEventSoundWorld, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
+
 
 class NetEventDamageInd(NetEventCommon):
 	id = 20
@@ -419,6 +431,9 @@ class NetEventDamageInd(NetEventCommon):
 	attr_proto = [
 		['angle', int],
 	]
+
+	def get_attr_proto(self):
+		return super(NetEventDamageInd, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 NET_CLASSES = [
@@ -434,7 +449,7 @@ NET_CLASSES = [
 	NetObjectCharacter,
 	NetObjectPlayerInfo,
 	NetObjectClientInfo,
-	NetObjectSpectactorInfo,
+	NetObjectSpectatorInfo,
 	NetEventCommon,
 	NetEventExplosion,
 	NetEventSpawn,
@@ -443,14 +458,17 @@ NET_CLASSES = [
 	NetEventSoundGlobal, # To be removed in 0.7
 	NetEventSoundWorld,
 	NetEventDamageInd,
+	NetObjectInvalid
 ]
 
 
 def get_net_class_for(atype):
 	try:
+		if atype < 0:
+			raise IndexError
 		return NET_CLASSES[atype]
 	except IndexError:
-		raise IndexError("Unknown Net class")
+		raise IndexError("Unknown Net class ({0})".format(atype))
 
 
 class NetMessageInvalid(NetMessage):
@@ -461,6 +479,7 @@ class NetMessageInvalid(NetMessage):
 class NetMessageSvMotd(NetMessageSv):
 	id = 1
 	name = 'SvMotd'
+	ignorable = True
 
 	attr_proto = [
 		['message', str],
@@ -475,29 +494,64 @@ class NetMessageSvBroadcast(NetMessageSv):
 		['message', str],
 	]
 
+	def process(self, commentary):
+		commentary.event('broadcast', self.attributes['message'])
+
 
 class NetMessageSvChat(NetMessageSv):
 	id = 3
 	name = 'SvChat'
 
 	attr_proto = [
-		['team', int],
+		['is_team', bool],
 		['client_id', int],
 		['message', str],
 	]
 
 	def process(self, commentary):
-		if self.attributes.client_id != TEAM_SPECTACTOR:
-			commentary.chat(team=self.attributes.team,
-				client_id=self.attributes.client_id,
-				message=self.attributes.message)
+		message = self.attributes['message']
+		if self.attributes['client_id'] != CHAT_SERVER:
+			return commentary.chat(is_team=self.attributes['is_team'],
+				client_id=self.attributes['client_id'],
+				message=message)
 		else:
-			if "flag was" in self.attributes.message:
+			# MISSING:
+			#  - name changes
+			#  - vote calls
+			#  - vote results
+
+			try:
+				matches = re.search(r"'(?P<player_name>.*?)' entered and"
+					r" joined the (?P<team>[\w\s]+)", message).groupdict()
+			except AttributeError:
 				pass
-		#### 
-		# else:
-		# 	other stuff...
-		# 	flag captures parsing
+			# else:
+			# 	commentary.new_player(*matches)
+
+			try:
+				matches = re.search(r"'(?P<player_name>.*?)' joined the"
+					r" (?P<team>[\w\s]+)", message).groupdict()
+			except AttributeError:
+				pass
+			else:
+				return commentary.team_change(**matches)
+
+			try:
+				matches = re.search(r"'(?P<player_name>.*?)' has"
+					r" left the game( \((?P<reason>.*?)\))?", message).groupdict()
+			except AttributeError:
+				pass
+			else:
+				return commentary.player_left(**matches)
+
+			try:
+				matches = re.search(r"The (?P<flag_captured>\w+?) flag was"
+					r" captured by '(?P<player_name>.*?)'"
+					r"( \((?P<time>[\d\.]+) seconds\))?", message).groupdict()
+			except AttributeError:
+				pass
+			else:
+				commentary.flag_capture(**matches)
 
 class NetMessageSvKillMsg(NetMessageSv):
 	id = 4
@@ -511,10 +565,8 @@ class NetMessageSvKillMsg(NetMessageSv):
 	]
 
 	def process(self, commentary):
-		pass
-		# commentary.add_kill(weapon=self.attributes.weapon,
-		# 	killer=self.attributes.killer, victim=self.attributes.victim,
-		# 	mode_special=self.attributes.mode_special)
+		commentary.add_kill(self.attributes['killer'], self.attributes['victim'],
+			self.attributes['weapon'], self.attributes['mode_special'])
 
 class NetMessageSvSoundGlobal(NetMessageSv):
 	id = 5
@@ -529,6 +581,7 @@ class NetMessageSvSoundGlobal(NetMessageSv):
 class NetMessageSvTuneParams(NetMessageSv):
 	id = 6
 	name = 'SvTuneParams'
+	ignorable = True
 
 
 class NetMessageSvExtraProjectile(NetMessageSv):
@@ -540,6 +593,7 @@ class NetMessageSvExtraProjectile(NetMessageSv):
 class NetMessageSvReadyToEnter(NetMessageSv):
 	id = 8
 	name = 'SvReadyToEnter'
+	ignorable = True
 
 
 class NetMessageSvWeaponPickup(NetMessageSv):
@@ -555,6 +609,7 @@ class NetMessageSvWeaponPickup(NetMessageSv):
 class NetMessageSvEmoticon(NetMessageSv):
 	id = 10
 	name = 'SvEmoticon'
+	ignorable = True
 
 	attr_proto = [
 		['client_id', int],
@@ -565,11 +620,13 @@ class NetMessageSvEmoticon(NetMessageSv):
 class NetMessageSvVoteClearOptions(NetMessageSv):
 	id = 11
 	name = 'SvVoteClearOptions'
+	ignorable = True
 
 
 class NetMessageSvVoteOptionListAdd(NetMessageSv):
 	id = 12
 	name = 'SvVoteOptionListAdd'
+	ignorable = True
 
 	attr_proto = [
 		['num_options', int],
@@ -597,6 +654,7 @@ class NetMessageSvVoteOptionListAdd(NetMessageSv):
 class NetMessageSvVoteOptionAdd(NetMessageSv):
 	id = 13
 	name = 'SvVoteOptionAdd'
+	ignorable = True
 
 	attr_proto = [
 		['description', str, SANITIZE_CC|SKIP_START_WHITESPACES],
@@ -606,6 +664,7 @@ class NetMessageSvVoteOptionAdd(NetMessageSv):
 class NetMessageSvVoteOptionRemove(NetMessageSv):
 	id = 14
 	name = 'SvVoteOptionRemove'
+	ignorable = True
 
 	attr_proto = [
 		['description', str, SANITIZE_CC|SKIP_START_WHITESPACES],
@@ -639,6 +698,7 @@ class NetMessageSvVoteStatus(NetMessageSv):
 class NetMessageClSay(NetMessageCl):
 	id = 17
 	name = 'ClSay'
+	ignorable = True
 
 	attr_proto = [
 		['team', bool],
@@ -649,18 +709,20 @@ class NetMessageClSay(NetMessageCl):
 class NetMessageClSetTeam(NetMessageCl):
 	id = 18
 	name = 'ClSetTeam'
+	ignorable = True
 
 	attr_proto = [
 		['team', int],
 	]
 
 
-class NetMessageClSetSpectactorMode(NetMessageCl):
+class NetMessageClSetSpectatorMode(NetMessageCl):
 	id = 19
-	name = 'ClSetSpectactorMode'
+	name = 'ClSetSpectatorMode'
+	ignorable = True
 
 	attr_proto = [
-		['spectactor_id', int],
+		['spectator_id', int],
 	]
 
 
@@ -697,11 +759,13 @@ class NetMessageClChangeInfo(NetMessageCl):
 class NetMessageClKill(NetMessageCl):
 	id = 22
 	name = 'ClKill'
+	ignorable = True
 
 
 class NetMessageClEmoticon(NetMessageCl):
 	id = 23
 	name = 'ClEmoticon'
+	ignorable = True
 
 	attr_proto = [
 		['emoticon', int],
@@ -711,6 +775,7 @@ class NetMessageClEmoticon(NetMessageCl):
 class NetMessageClVote(NetMessageCl):
 	id = 24
 	name = 'ClVote'
+	ignorable = True
 
 	attr_proto = [
 		['vote', int],
@@ -720,6 +785,7 @@ class NetMessageClVote(NetMessageCl):
 class NetMessageClCallVote(NetMessageCl):
 	id = 25
 	name = 'ClCallVote'
+	ignorable = True
 
 	attr_proto = [
 		['type', str, SANITIZE_CC|SKIP_START_WHITESPACES],
@@ -751,13 +817,15 @@ NET_MESSAGES = [
 	# Client messages
 	NetMessageClSay,
 	NetMessageClSetTeam,
-	NetMessageClSetSpectactorMode,
+	NetMessageClSetSpectatorMode,
 	NetMessageClStartInfo,
 	NetMessageClChangeInfo,
 	NetMessageClKill,
 	NetMessageClEmoticon,
 	NetMessageClVote,
 	NetMessageClCallVote,
+	
+	NetMessageInvalid,
 ]
 
 
