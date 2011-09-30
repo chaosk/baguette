@@ -16,24 +16,23 @@ class Delta(object):
 		deleted_count, updated_count, temp_count = data[:3]
 		data = data[3:]
 
-		snapshot_to = Snapshot() # init builder
+		snapshot_to = Snapshot()
 
 		deleted, data = data[:deleted_count], data[deleted_count:]
 
 		snapshot_from = self.previous_snapshot
-		
+
 		if snapshot_from:
 			for key, item in snapshot_from.items.iteritems():
 				if not key in deleted:
-					snapshot_to.new_item(key, item.data) # i guess
+					snapshot_to.new_item(key, item.data)
 
-		# updated shit
 		for i in range(updated_count):
 			if len(data) <= 2:
 				raise DemoError # in tw return -1
 			atype, id, data = data[0], data[1], data[2:] # slow :/
 			net_obj = get_net_class_for(atype)()
-			item_size = len(net_obj.get_attr_proto())
+			item_size = net_obj.item_count
 
 			if net_obj.ignorable:
 				data = data[item_size:]
@@ -45,29 +44,24 @@ class Delta(object):
 
 			key = (atype<<16)|id
 
-			from_data = snapshot_to.get_item_data(key) # should return None if... well because of the next line
+			from_data = snapshot_to.get_item_data(key)
 			new_data, data = data[:item_size], data[item_size:]
 			if from_data:
 				new_data = self.undiff_item(from_data, new_data)
 
-			new_item = snapshot_to.get_item(key) # we need a builder :P
-			if not new_item:
+			try:
+				new_item = snapshot_to.items[key]
+			except KeyError:
 				snapshot_to.new_item(key, new_data)
 			else:
 				new_item.data = new_data
 
-		return snapshot_to # or what ever xD
+		return snapshot_to
 
-	def undiff_item(self, from_data, diff_data): # item_size needed?
-		# data should be ints
+	def undiff_item(self, from_data, diff_data):
 		out_data = []
 		for i in xrange(len(diff_data)):
 			out_data.append(from_data[i]+diff_data[i])
-			# if _diff == 0:
-			# 	# self.snapshot_data_rate[self.current_snapshot] += 1
-			# else:
-			# 	# _str = int_pack(_diff)
-			# 	# self.snapshot_data_rate[self.current_snapshot] += len(_str) * 8
 		return out_data
 
 
@@ -90,10 +84,7 @@ class SnapshotItem(object):
 class Snapshot(object):
 
 	def __init__(self):
-		self.data_size = 0
-		self.num_items = 0
-		self.items = OrderedDict() # SnapshotItems
-		#self.offsets = [] # needed in python?
+		self.items = OrderedDict()
 
 	def get_item(self, key):
 		try:
@@ -111,5 +102,4 @@ class Snapshot(object):
 		item = SnapshotItem(key)
 		item.data = data
 		self.items[key] = item
-		self.num_items += 1
 		return item

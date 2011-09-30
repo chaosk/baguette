@@ -166,11 +166,7 @@ class Commentary(object):
 		])
 
 	def get_player(self, id):
-		try:
-			player = self.game.players[id]
-		except KeyError:
-			player = None
-		return player
+		return self.game.players[id]
 
 	def comment(self, atype, message, params=None):
 		adict = {'type': atype, 'message': message, 'params': params}
@@ -186,10 +182,11 @@ class Commentary(object):
 		self.event('game_conditions', message)
 
 	def chat(self, is_team, client_id, message):
-		player = self.get_player(client_id)
-		if player == None:
+		try:
+			player = self.get_player(client_id)
+		except KeyError:
 			return
-			
+
 		self.event('chat', "[{0}] {1}: {2}".format(
 			"global" if not is_team else "team/{0}".format(
 			TEAMS[player.team].lower()), player.nickname, message)
@@ -249,18 +246,20 @@ class Commentary(object):
 		else:
 			current_flag_carrier_id = current_flag_item['flag_carrier_id']
 			flag_time = game.current_timestamp - current_flag_item['timestamp']
-		if current_flag_carrier_id >= 0:
-			try:
-				current_flag_item['flag_carrier'].flag_possession += flag_time
-			except AttributeError:
-				pass
-			team.flag_possession += flag_time
+		try:
+			current_flag_item['flag_carrier'].flag_possession += flag_time
+		except AttributeError:
+			pass
+		team.flag_possession += flag_time
 
 	def flag_history_item(self, team, flag_carrier_id):
+		try:
+			flag_carrier = self.get_player(flag_carrier_id)
+		except KeyError:
+			return
 		game = self.game
 		flag_history = team.current_flag_history
 		self.update_flag_possession(team)
-		flag_carrier = self.get_player(flag_carrier_id)
 		adict = {'flag_carrier_id': flag_carrier_id,
 			'flag_carrier': flag_carrier, 'timestamp': game.current_timestamp}
 		flag_history.append(adict)
@@ -275,8 +274,9 @@ class Commentary(object):
 			if flagcarrier >= 0:
 				self.flag_history_item(team, flagcarrier)
 				if team.flag_carrier == FLAG_ATSTAND:
-					player = self.get_player(flagcarrier)
-					if player == None:
+					try:
+						player = self.get_player(flagcarrier)
+					except KeyError:
 						return
 					if self.game.no_touches:
 						self.game.no_touches = False
@@ -309,10 +309,7 @@ class Commentary(object):
 		self.game.players_name_to_id[player.nickname] = id
 
 	def get_player_by_name(self, player_name):
-		try:
-			return self.get_player(self.game.players_name_to_id[player_name])
-		except KeyError:
-			return None
+		return self.get_player(self.game.players_name_to_id[player_name])
 
 	def move_player_to_active(self, player_name):
 		try:
@@ -353,10 +350,10 @@ class Commentary(object):
 	def flag_capture(self, flag_captured, player_name, time=None):
 		try:
 			self.get_player_by_name(player_name).flag_captures += 1
-		except:
+		except KeyError:
 			import pdb
 			pdb.set_trace()
-			
+
 		team_id = FLAG_CAPTURES_TO_TEAMS[flag_captured]
 		team = self.game.teams[team_id]
 		team.flag_captures += 1

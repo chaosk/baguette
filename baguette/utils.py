@@ -32,10 +32,10 @@ def safe_chr(i):
 
 def ints_to_string(num):
 	return ''.join([''.join([
-		chr(max(0, min(((val>>24)&0xff)-128 if ((val>>24)&0xff)-128 >= 0 else 256 + ((val>>24)&0xff)-128, 256))),
-		chr(max(0, min(((val>>16)&0xff)-128 if ((val>>16)&0xff)-128 >= 0 else 256 + ((val>>16)&0xff)-128, 256))),
-		chr(max(0, min(((val>>8)&0xff)-128 if ((val>>8)&0xff)-128 >= 0 else 256 + ((val>>8)&0xff)-128, 256))),
-		chr(max(0, min((val&0xff)-128 if (val&0xff)-128 >= 0 else 256 + (val&0xff)-128, 256))),
+		chr(max(0, min(((val>>24)&0xff)-128 if ((val>>24)&0xff) >= 128 else 256 + ((val>>24)&0xff)-128, 255))),
+		chr(max(0, min(((val>>16)&0xff)-128 if ((val>>16)&0xff) >= 128 else 256 + ((val>>16)&0xff)-128, 255))),
+		chr(max(0, min(((val>>8)&0xff)-128 if ((val>>8)&0xff) >= 128 else 256 + ((val>>8)&0xff)-128, 255))),
+		chr(max(0, min((val&0xff)-128 if val&0xff >= 128 else 256 + (val&0xff)-128, 255))),
 		]) for val in num]).partition('\x00')[0]
 
 

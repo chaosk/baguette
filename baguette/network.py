@@ -7,33 +7,18 @@ from packer import SANITIZE_CC, SKIP_START_WHITESPACES
 class Tick(int):
 	pass
 
-
-# class DictOnSteroids(dict):
-# 	def __getattr__(self, name):
-# 		try:
-# 			return self.__getitem__(name)
-# 		except KeyError:
-# 			raise AttributeError(name)
-
-
 class BaseNet(object):
 	id = 0
 	attr_proto = []
+	attributes = {}
 	ignorable = False
-
-	def __init__(self):
-		self.attributes = {}
-
-	def get_attr_proto(self):
-		return self.attr_proto
 
 	def assign_fields(self, values):
 		if self.ignorable:
 			return # ?!?!?!?
-		attr_proto = self.get_attr_proto()
+		attr_proto = self.attr_proto
 		for i in xrange(len(attr_proto)):
-			values[i] = attr_proto[i][1](values[i])
-			self.attributes[attr_proto[i][0]] = values[i]
+			self.attributes[attr_proto[i][0]] = attr_proto[i][1](values[i])
 
 		self.clean_up()
 
@@ -57,13 +42,14 @@ class BaseNet(object):
 		return self.name
 
 
-class Net(BaseNet):
-	def get_attr_proto(self):
-		return super(Net, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
+# class Net(BaseNet):
+# 	def get_attr_proto(self):
+# 		return super(Net, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
-class NetObject(Net):
+class NetObject(BaseNet):
 	class_name = 'NetObject'
+	item_count = 0
 
 	def process(self, commentary):
 		pass
@@ -73,7 +59,7 @@ class NetEvent(NetObject):
 	class_name = 'NetEvent'
 
 
-class NetMessage(Net):
+class NetMessage(BaseNet):
 	class_name = 'NetMessage'
 	unpacker = None
 
@@ -90,8 +76,12 @@ class NetMessage(Net):
 		return bool(self.get_for_type_int(params))
 
 	def collect_data(self):
-		attr_proto = self.get_attr_proto()
-		for attr, atype, params in attr_proto:
+		attr_proto = self.attr_proto
+		for attribute in attr_proto:
+			try:
+				attr, atype, params = attribute
+			except ValueError:
+				attr, atype, params = attribute + [None]
 			try:
 				self.attributes[attr] = \
 					getattr(self, 'get_for_type_{0}'.format(atype.__name__))(params)
@@ -116,6 +106,7 @@ class NetObjectInvalid(NetObject):
 class NetObjectPlayerInput(NetObject):
 	id = 1
 	name = 'PlayerInput'
+	item_count = 10
 	ignorable = True
 
 	attr_proto = [
@@ -135,6 +126,7 @@ class NetObjectPlayerInput(NetObject):
 class NetObjectProjectile(NetObject):
 	id = 2
 	name = 'Projectile'
+	item_count = 6
 	ignorable = True
 	
 	attr_proto = [
@@ -150,6 +142,7 @@ class NetObjectProjectile(NetObject):
 class NetObjectLaser(NetObject):
 	id = 3
 	name = 'Laser'
+	item_count = 5
 	ignorable = True
 
 	attr_proto = [
@@ -164,6 +157,7 @@ class NetObjectLaser(NetObject):
 class NetObjectPickup(NetObject):
 	id = 4
 	name = 'Pickup'
+	item_count = 4
 	ignorable = True
 
 	attr_proto = [
@@ -177,6 +171,7 @@ class NetObjectPickup(NetObject):
 class NetObjectFlag(NetObject):
 	id = 5
 	name = 'Flag'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
@@ -189,6 +184,7 @@ class NetObjectFlag(NetObject):
 class NetObjectGameInfo(NetObject):
 	id = 6
 	name = 'GameInfo'
+	item_count = 8
 
 	attr_proto = [
 		['game_flags', int],
@@ -219,6 +215,7 @@ class NetObjectGameInfo(NetObject):
 class NetObjectGameData(NetObject):
 	id = 7
 	name = 'GameData'
+	item_count = 4
 
 	attr_proto = [
 		['red_score', int],
@@ -236,7 +233,7 @@ class NetObjectGameData(NetObject):
 class NetObjectCharacterCore(NetObject):
 	id = 8
 	name = 'CharacterCore'
-	ignorable = True
+	item_count = 15
 	ignorable = True
 
 	attr_proto = [
@@ -261,9 +258,25 @@ class NetObjectCharacterCore(NetObject):
 class NetObjectCharacter(NetObjectCharacterCore):
 	id = 9
 	name = 'Character'
+	item_count = 22
 	ignorable = True
 
 	attr_proto = [
+		['tick', Tick],
+		['x', int],
+		['y', int],
+		['vel_x', int],
+		['vel_y', int],
+		['angle', int],
+		['direction', int],
+		['jumped', int],
+		['hooked_player', int],
+		['hook_state', int],
+		['hook_tick', Tick],
+		['hook_x', int],
+		['hook_y', int],
+		['hook_Dx', int],
+		['hook_Dy', int],
 		['player_flags', int],
 		['health', int],
 		['armor', int],
@@ -272,14 +285,11 @@ class NetObjectCharacter(NetObjectCharacterCore):
 		['emote', int],
 		['attack_tick', int],
 	]
-	
-	def get_attr_proto(self):
-		return super(NetObjectCharacter, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
-
 
 class NetObjectPlayerInfo(NetObject):
 	id = 10
 	name = 'PlayerInfo'
+	item_count = 5
 
 	attr_proto = [
 		['is_local', bool],
@@ -302,6 +312,7 @@ class NetObjectPlayerInfo(NetObject):
 class NetObjectClientInfo(NetObject):
 	id = 11
 	name = 'ClientInfo'
+	item_count = 17
 
 	attr_proto = [
 		['name0', int],
@@ -328,7 +339,13 @@ class NetObjectClientInfo(NetObject):
 	]
 
 	def process(self, commentary):
-		player = Player()
+		name = self.attributes['name']
+		try:
+			player = commentary.get_player_by_name(name)
+		except KeyError:
+			player = Player()
+		else:
+			return
 		player.game = commentary.game
 		player.nickname = self.attributes['name']
 		player.clanname = self.attributes['clan']
@@ -345,6 +362,7 @@ class NetObjectClientInfo(NetObject):
 class NetObjectSpectatorInfo(NetObject):
 	id = 12
 	name = 'SpectatorInfo'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
@@ -357,6 +375,7 @@ class NetObjectSpectatorInfo(NetObject):
 class NetEventCommon(NetEvent):
 	id = 13
 	name = 'Common'
+	item_count = 2
 	ignorable = True
 
 	attr_proto = [
@@ -386,54 +405,54 @@ class NetEventHammerHit(NetEventCommon):
 class NetEventDeath(NetEventCommon):
 	id = 17
 	name = 'Death'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
+		['x', int],
+		['y', int],
 		['client_id', int],
 	]
-
-	def get_attr_proto(self):
-		return super(NetEventDeath, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 class NetEventSoundGlobal(NetEventCommon):
 	id = 18
 	# To be removed in 0.7
 	name = 'SoundGlobal'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
+		['x', int],
+		['y', int],
 		['sound_id', int],
 	]
-
-	def get_attr_proto(self):
-		return super(NetEventSoundGlobal, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 class NetEventSoundWorld(NetEventCommon):
 	id = 19
 	name = 'SoundWorld'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
+		['x', int],
+		['y', int],
 		['sound_id', int],
 	]
-
-	def get_attr_proto(self):
-		return super(NetEventSoundWorld, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 class NetEventDamageInd(NetEventCommon):
 	id = 20
 	name = 'DamageInd'
+	item_count = 3
 	ignorable = True
 
 	attr_proto = [
+		['x', int],
+		['y', int],
 		['angle', int],
 	]
-
-	def get_attr_proto(self):
-		return super(NetEventDamageInd, self).attr_proto + [a+[None]*(3-len(a)) for a in self.attr_proto]
 
 
 NET_CLASSES = [
