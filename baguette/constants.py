@@ -75,4 +75,5 @@ WEAPONS = {
 	WEAPON_NINJA: "Ninja",
 }
 
-TICKS_PER_SECOND = 25 # I'm correct, don't change me
+TICKS_PER_SECOND = 50
+SNAPS_PER_SECOND = 25

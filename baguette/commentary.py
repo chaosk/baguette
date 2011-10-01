@@ -1,11 +1,10 @@
 from collections import OrderedDict
-from copy import copy
-
 from constants import *
 
 CONSECUTIVE_CAPS = [0, 'double', 'triple', 'pwnage']
 def seconds(num):
 	return num * TICKS_PER_SECOND
+
 
 class Player(object):
 	def __init__(self):
@@ -13,8 +12,8 @@ class Player(object):
 		self.clanname = ''
 
 		self.game = None
-		self.join_timestamp = 0
-		self.leave_timestamp = 0
+		self.join_tick = 0
+		self.leave_tick = 0
 		self.time_away = 0
 	
 		self.team = TEAM_SPECTATOR
@@ -54,8 +53,9 @@ class Player(object):
 
 	@property
 	def time_played(self):
-		return (self.leave_timestamp if self.leave_timestamp else
-			self.game.current_timestamp) - self.join_timestamp - self.time_away
+		return ((self.leave_tick if self.leave_tick else
+			self.game.end_tick if self.game.end_tick else
+			self.demo.current_tick) - self.join_tick - self.time_away) // TICKS_PER_SECOND
 
 	def detailed_scoreboard(self):
 		headings = ("Nickname", "Clan", "Score", "Kills", "Deaths",
@@ -88,7 +88,7 @@ class Team(object):
 		self.flag_touches = 0
 		self.flag_captures = 0
 		self.flag_possession = 0
-		self.last_capture_time = 0
+		self.last_capture_tick = 0
 		self.possible_consecutive_cap = False
 		self.possible_counter_cap = False
 		self.consecutive_caps = 0
@@ -114,7 +114,8 @@ class Spectators(Team):
 	short = "spect"
 
 
-class Game(object):
+class GameRound(object):
+
 	def __init__(self):
 		self.score_limit = 0
 		self.time_limit = 0
@@ -126,31 +127,35 @@ class Game(object):
 		self.players_left = {}
 		self.player_waiting = None
 		self.start_tick = 0
-		self.current_tick = 0
+		self.end_tick = 0
+		self.start_game_tick = 0
 		self.no_touches = True
+
+		self.demo = None
 
 		self.spectators = Spectators()
 		self.blue = Blue()
 		self.red = Red()
-
 		self.teams = {
 			TEAM_SPECTATOR: self.spectators,
 			TEAM_BLUE: self.blue,
 			TEAM_RED: self.red,
 		}
+		self.commentary = Commentary()
+
+	def get_player(self, name):
+		return self.players[self.players_name_to_id[name]]
 
 	@property
-	def current_timestamp(self):
-		return self.current_tick // TICKS_PER_SECOND
+	def duration(self):
+		return ((self.end_tick if self.end_tick else
+			self.demo.current_tick) - self.start_tick) // TICKS_PER_SECOND
+
 
 class Commentary(object):
-
-	game = Game()
-	# rounds?
-	previous_games = []
-
-	previous_commentaries = []
-	commentary = {}
+	
+	def __init__(self):
+		self.commentary = {}
 
 	def get_output(self):
 		commentary = OrderedDict(sorted(self.commentary.items(), key=lambda t: t[0]))
@@ -165,15 +170,40 @@ class Commentary(object):
 			for comment in comments
 		])
 
-	def get_player(self, id):
-		return self.game.players[id]
+
+class Commentator(object):
+
+	def __init__(self, demo):
+		self.demo = demo
+
+	def first_new_round(self):
+		around = GameRound()
+		around.demo = self.demo
+		self.new_round = self.next_new_round
+		self.demo.rounds.append(around)
+
+	def next_new_round(self):
+		current_tick = self.demo.current_tick
+		self.round.end_tick = current_tick
+		around = GameRound()
+		around.demo = self.demo
+		around.start_tick = current_tick
+		self.demo.rounds.append(around)
+		
+	@property
+	def round(self):
+		return self.demo.rounds[-1]
+
+	new_round = first_new_round
 
 	def comment(self, atype, message, params=None):
 		adict = {'type': atype, 'message': message, 'params': params}
+		timestamp = (self.demo.current_tick - self.round.start_tick) // SNAPS_PER_SECOND
+		
 		try:
-			self.commentary[self.game.current_timestamp].append(adict)
+			self.round.commentary.commentary[timestamp].append(adict)
 		except KeyError:
-			self.commentary[self.game.current_timestamp] = [adict]
+			self.round.commentary.commentary[timestamp] = [adict]
 
 	def event(self, atype, message, params=None):
 		self.comment(atype, message, params)
@@ -183,7 +213,7 @@ class Commentary(object):
 
 	def chat(self, is_team, client_id, message):
 		try:
-			player = self.get_player(client_id)
+			player = self.round.players[client_id]
 		except KeyError:
 			return
 
@@ -192,52 +222,48 @@ class Commentary(object):
 			TEAMS[player.team].lower()), player.nickname, message)
 		)
 
-	def set_timestamp(self, timestamp):
-		self.game.current_timestamp = timestamp
-
 	def set_score_limit(self, score_limit):
-		if score_limit == self.game.score_limit:
+		if score_limit == self.round.score_limit:
 			return
 		if score_limit:
 			self.game_conditions("Score limit changed to {0}".format(score_limit))
 		else:
 			self.game_conditions("Score limit disabled")
-		self.game.score_limit = score_limit
+		self.round.score_limit = score_limit
 
 	def set_time_limit(self, time_limit):
-		if time_limit == self.game.time_limit:
+		if time_limit == self.round.time_limit:
 			return
 		if time_limit:
 			self.game_conditions("Time limit changed to {0}".format(time_limit))
 		else:
 			self.game_conditions("Time limit disabled")
-		self.game.time_limit = time_limit
-
-	def next_tick(self):
-		self.game.current_tick += 1
+		self.round.time_limit = time_limit
 
 	def restart(self, start_tick):
-		self.previous_games.append(self.game)
-		self.game = Game()
-		self.previous_commentaries.append(copy(self))
-		self.commentary = {}
+		self.new_round()
 		self.event('restart', "Game restarted.")
-		self.game.start_tick = start_tick
+		self.round.start_game_tick = start_tick
 
-	def check_for_restart(self, start_tick):
-		if not self.game.start_tick:
-			self.game.start_tick = start_tick
-		elif self.game.start_tick != start_tick:
+	def first_check_for_restart(self, start_tick):
+		self.restart(start_tick)
+		self.check_for_restart = self.next_check_for_restart
+
+	def next_check_for_restart(self, start_tick):
+		if self.round.start_game_tick != start_tick:
 			self.restart(start_tick)
+			self.round.start_game_tick = start_tick
+
+	check_for_restart = first_check_for_restart
 
 	def set_team_scores(self, blue_score, red_score):
-		if self.game.blue.score != blue_score:
-			self.game.blue.score = blue_score
-		if self.game.red.score != red_score:
-			self.game.red.score = red_score
+		if self.round.blue.score != blue_score:
+			self.round.blue.score = blue_score
+		if self.round.red.score != red_score:
+			self.round.red.score = red_score
 
 	def update_flag_possession(self, team):
-		game = self.game
+		round = self.round
 		flag_history = team.current_flag_history
 		try:
 			current_flag_item = flag_history[-1]
@@ -245,7 +271,7 @@ class Commentary(object):
 			return
 		else:
 			current_flag_carrier_id = current_flag_item['flag_carrier_id']
-			flag_time = game.current_timestamp - current_flag_item['timestamp']
+			flag_time = self.demo.current_tick - current_flag_item['tick']
 		try:
 			current_flag_item['flag_carrier'].flag_possession += flag_time
 		except AttributeError:
@@ -254,82 +280,79 @@ class Commentary(object):
 
 	def flag_history_item(self, team, flag_carrier_id):
 		try:
-			flag_carrier = self.get_player(flag_carrier_id)
+			flag_carrier = self.round.players[flag_carrier_id]
 		except KeyError:
 			return
-		game = self.game
 		flag_history = team.current_flag_history
 		self.update_flag_possession(team)
 		adict = {'flag_carrier_id': flag_carrier_id,
-			'flag_carrier': flag_carrier, 'timestamp': game.current_timestamp}
+			'flag_carrier': flag_carrier, 'tick': self.demo.current_tick}
 		flag_history.append(adict)
 
 	def flag_history_clear(self, team):
 		self.update_flag_possession(team)
 		team.current_flag_history = []
 
-	def set_flagcarrier(self, team_id, flagcarrier):
-		team = self.game.teams[OPPONENTS[team_id]]
-		if team.flag_carrier != flagcarrier:
-			if flagcarrier >= 0:
-				self.flag_history_item(team, flagcarrier)
+	def set_flagcarrier(self, team_id, flagcarrier_id):
+		team = self.round.teams[OPPONENTS[team_id]]
+		if team.flag_carrier != flagcarrier_id:
+			if flagcarrier_id >= 0:
+				self.flag_history_item(team, flagcarrier_id)
 				if team.flag_carrier == FLAG_ATSTAND:
 					try:
-						player = self.get_player(flagcarrier)
+						player = self.round.players[flagcarrier_id]
 					except KeyError:
 						return
-					if self.game.no_touches:
-						self.game.no_touches = False
+					if self.round.no_touches:
+						self.round.no_touches = False
 						self.event('first_touch', "First flag touch by {0} ({1})".format(player.nickname, team.short))
-					if self.game.current_tick - team.last_capture_time < seconds(5):
+					if self.demo.current_tick - team.last_capture_tick < seconds(5):
 						team.possible_consecutive_cap = True
-					if self.game.current_tick - self.game.teams[OPPONENTS[team_id]].last_capture_time < seconds(5):
+					if self.demo.current_tick - self.round.teams[OPPONENTS[team_id]].last_capture_tick < seconds(5):
 						team.possible_counter_cap = True
 					team.flag_touches += 1
-					if not team.flag_touches % 100:
+					if not team.flag_touches % 100: 
 						self.event('capture_by_touches', "100 flag touches by {0}".format(team.lower()))
 					player.flag_touches += 1
-						
-			elif flagcarrier == FLAG_TAKEN:
-				self.flag_history_item(team, flagcarrier)
-			elif flagcarrier == FLAG_ATSTAND:
+			elif flagcarrier_id == FLAG_TAKEN:
+				self.flag_history_item(team, flagcarrier_id)
+			elif flagcarrier_id == FLAG_ATSTAND:
 				self.flag_history_clear(team)
 				team.current_assist = None
 				team.possible_consecutive_cap = False
 				team.consecutive_caps = 0
-			team.flag_carrier = flagcarrier
+			team.flag_carrier = flagcarrier_id
 
-
-	def set_flagcarriers(self, blue_flagcarrier, red_flagcarrier):
-		self.set_flagcarrier(TEAM_BLUE, blue_flagcarrier)
-		self.set_flagcarrier(TEAM_RED, red_flagcarrier)
+	def set_flagcarriers(self, blue_flagcarrier_id, red_flagcarrier_id):
+		self.set_flagcarrier(TEAM_BLUE, blue_flagcarrier_id)
+		self.set_flagcarrier(TEAM_RED, red_flagcarrier_id)
 
 	def set_player(self, id, player):
-		self.game.players[id] = player
-		self.game.players_name_to_id[player.nickname] = id
+		self.round.players[id] = player
+		self.round.players_name_to_id[player.nickname] = id
 
 	def get_player_by_name(self, player_name):
-		return self.get_player(self.game.players_name_to_id[player_name])
+		return self.round.players[self.round.players_name_to_id[player_name]]
 
 	def move_player_to_active(self, player_name):
 		try:
-			player = self.game.players_left[player_name]
+			player = self.round.players_left[player_name]
 		except KeyError:
 			return
-		player.time_away = self.game.current_timestamp - player.leave_timestamp
-		player.leave_timestamp = 0
-		del self.game.players_left[player_name]
+		player.time_away = self.demo.current_tick - player.leave_tick
+		player.leave_tick = 0
+		del self.round.players_left[player_name]
 
 	def move_player_to_left(self, player_id):
-		player = self.get_player(player_id)
-		player.leave_timestamp = self.game.current_timestamp
-		self.game.players_left[player.nickname] = player
-		del self.game.players[player_id]
-		del self.game.players_name_to_id[player.nickname]
+		player = self.round.players[player_id]
+		player.leave_tick = self.demo.current_tick
+		self.round.players_left[player.nickname] = player
+		del self.round.players[player_id]
+		del self.round.players_name_to_id[player.nickname]
 
 	def player_left(self, player_name, reason=None):
 		try:
-			player_id = self.game.players_name_to_id[player_name]
+			player_id = self.round.players_name_to_id[player_name]
 		except KeyError:
 			return
 		self.move_player_to_left(player_id)
@@ -337,10 +360,10 @@ class Commentary(object):
 	def team_change(self, player_name, team):
 		team_id = TEAM_NAMES[team]
 		try:
-			player_id = self.game.players_name_to_id[player_name]
+			player_id = self.round.players_name_to_id[player_name]
 		except KeyError:
 			return
-		player = self.get_player(player_id)
+		player = self.round.players[player_id]
 		if player.team >= 0 and team_id < 0:
 			self.move_player_to_left(player_id)
 		elif player.team < 0 and team_id >= 0:
@@ -351,13 +374,12 @@ class Commentary(object):
 		try:
 			self.get_player_by_name(player_name).flag_captures += 1
 		except KeyError:
-			import pdb
-			pdb.set_trace()
+			return
 
 		team_id = FLAG_CAPTURES_TO_TEAMS[flag_captured]
-		team = self.game.teams[team_id]
+		team = self.round.teams[team_id]
 		team.flag_captures += 1
-		team.last_capture_time = self.game.current_tick
+		team.last_capture_tick = self.demo.current_tick
 
 		try:
 			team.current_assist.assists += 1
@@ -395,13 +417,13 @@ class Commentary(object):
 		if weapon_id == WEAPON_GAME:
 			return
 
-		killer = self.get_player(killer_id)
+		killer = self.round.players[killer_id]
 
 		if killer_id == victim_id and victim_id > -1:
 			victim = killer
 			victim.suicides += 1
 		else:
-			victim = self.get_player(victim_id)
+			victim = self.round.players[victim_id]
 			killer.kills += 1
 			killer.current_spree += 1
 
@@ -416,7 +438,7 @@ class Commentary(object):
 			victim.weapon_deaths[weapon_id] += 1
 
 		if mode_special & 1 and killer_id != victim_id:
-			self.game.teams[killer.team].current_assist = killer
+			self.round.teams[killer.team].current_assist = killer
 			killer.carriers_killed += 1
 		if mode_special & 2:
 			if killer_id != victim_id:

@@ -32,7 +32,7 @@ class BaseNet(object):
 		else:
 			self.attributes[attr_name] = ''.join(alist)
 
-	def process(self, commentary):
+	def process(self, commentator):
 		pass
 
 	def __repr__(self):
@@ -51,7 +51,7 @@ class NetObject(BaseNet):
 	class_name = 'NetObject'
 	item_count = 0
 
-	def process(self, commentary):
+	def process(self, commentator):
 		pass
 
 
@@ -63,7 +63,7 @@ class NetMessage(BaseNet):
 	class_name = 'NetMessage'
 	unpacker = None
 
-	def process(self, commentary):
+	def process(self, commentator):
 		pass
 
 	def get_for_type_str(self, params):
@@ -197,10 +197,10 @@ class NetObjectGameInfo(NetObject):
 		['round_current', int],
 	]
 
-	def process(self, commentary):
-		commentary.check_for_restart(self.attributes['round_start_tick'])
-		commentary.set_score_limit(self.attributes['score_limit'])
-		commentary.set_time_limit(self.attributes['time_limit'])
+	def process(self, commentator):
+		commentator.check_for_restart(self.attributes['round_start_tick'])
+		commentator.set_score_limit(self.attributes['score_limit'])
+		commentator.set_time_limit(self.attributes['time_limit'])
 
 	def clean_up(self):
 		self.attributes['is_team_game'] = bool(self.attributes['game_flags'] & 1)
@@ -224,10 +224,10 @@ class NetObjectGameData(NetObject):
 		['blue_flagcarrier_id', int],
 	]
 
-	def process(self, commentary):
-		commentary.set_team_scores(self.attributes['blue_score'],
+	def process(self, commentator):
+		commentator.set_team_scores(self.attributes['blue_score'],
 			self.attributes['red_score'])
-		commentary.set_flagcarriers(self.attributes['blue_flagcarrier_id'],
+		commentator.set_flagcarriers(self.attributes['blue_flagcarrier_id'],
 			self.attributes['red_flagcarrier_id'])
 
 class NetObjectCharacterCore(NetObject):
@@ -299,14 +299,14 @@ class NetObjectPlayerInfo(NetObject):
 		['latency', int],
 	]
 
-	def process(self, commentary):
+	def process(self, commentator):
 		client_id = self.attributes['client_id']
 		try:
-			commentary.game.players[client_id].score = self.attributes['score']
+			commentator.round.players[client_id].score = self.attributes['score']
 		except KeyError:
-			commentary.game.player_waiting.team = self.attributes['team']
-			commentary.set_player(client_id,
-				commentary.game.player_waiting)
+			commentator.round.player_waiting.team = self.attributes['team']
+			commentator.set_player(client_id,
+				commentator.round.player_waiting)
 
 
 class NetObjectClientInfo(NetObject):
@@ -338,20 +338,20 @@ class NetObjectClientInfo(NetObject):
 		['color_feet', int],
 	]
 
-	def process(self, commentary):
+	def process(self, commentator):
 		name = self.attributes['name']
 		try:
-			player = commentary.get_player_by_name(name)
+			player = commentator.get_player_by_name(name)
 		except KeyError:
 			player = Player()
 		else:
 			return
-		player.game = commentary.game
+		player.game = commentator.round
 		player.nickname = self.attributes['name']
 		player.clanname = self.attributes['clan']
 		player.country = self.attributes['country']
-		player.join_timestamp = commentary.game.current_timestamp
-		commentary.game.player_waiting = player
+		player.join_tick = commentator.demo.current_tick
+		commentator.round.player_waiting = player
 
 	def clean_up(self):
 		self.concatecate_strings('name', 4)
@@ -513,8 +513,8 @@ class NetMessageSvBroadcast(NetMessageSv):
 		['message', str],
 	]
 
-	def process(self, commentary):
-		commentary.event('broadcast', self.attributes['message'])
+	def process(self, commentator):
+		commentator.event('broadcast', self.attributes['message'])
 
 
 class NetMessageSvChat(NetMessageSv):
@@ -527,10 +527,10 @@ class NetMessageSvChat(NetMessageSv):
 		['message', str],
 	]
 
-	def process(self, commentary):
+	def process(self, commentator):
 		message = self.attributes['message']
 		if self.attributes['client_id'] != CHAT_SERVER:
-			return commentary.chat(is_team=self.attributes['is_team'],
+			return commentator.chat(is_team=self.attributes['is_team'],
 				client_id=self.attributes['client_id'],
 				message=message)
 		else:
@@ -545,7 +545,7 @@ class NetMessageSvChat(NetMessageSv):
 			except AttributeError:
 				pass
 			# else:
-			# 	commentary.new_player(*matches)
+			# 	commentator.new_player(*matches)
 
 			try:
 				matches = re.search(r"'(?P<player_name>.*?)' joined the"
@@ -553,7 +553,7 @@ class NetMessageSvChat(NetMessageSv):
 			except AttributeError:
 				pass
 			else:
-				return commentary.team_change(**matches)
+				return commentator.team_change(**matches)
 
 			try:
 				matches = re.search(r"'(?P<player_name>.*?)' has"
@@ -561,7 +561,7 @@ class NetMessageSvChat(NetMessageSv):
 			except AttributeError:
 				pass
 			else:
-				return commentary.player_left(**matches)
+				return commentator.player_left(**matches)
 
 			try:
 				matches = re.search(r"The (?P<flag_captured>\w+?) flag was"
@@ -570,7 +570,7 @@ class NetMessageSvChat(NetMessageSv):
 			except AttributeError:
 				pass
 			else:
-				commentary.flag_capture(**matches)
+				commentator.flag_capture(**matches)
 
 class NetMessageSvKillMsg(NetMessageSv):
 	id = 4
@@ -583,8 +583,8 @@ class NetMessageSvKillMsg(NetMessageSv):
 		['mode_special', int],
 	]
 
-	def process(self, commentary):
-		commentary.add_kill(self.attributes['killer'], self.attributes['victim'],
+	def process(self, commentator):
+		commentator.add_kill(self.attributes['killer'], self.attributes['victim'],
 			self.attributes['weapon'], self.attributes['mode_special'])
 
 class NetMessageSvSoundGlobal(NetMessageSv):

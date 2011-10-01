@@ -20,7 +20,7 @@ output_handler.setLevel(logging.INFO)
 output_formatter = logging.Formatter('%(message)s')
 output_handler.setFormatter(output_formatter)
 
-from commentary import Commentary
+from commentary import Commentator
 from constants import *
 from delta import Delta, Snapshot
 from huffman import Huffman
@@ -99,7 +99,8 @@ class Demo(object):
 		self.huffman = Huffman()
 		self.delta = Delta()
 		self.info = DemoInfo()
-		self.commentary = Commentary()
+		self.rounds = []
+		self.commentator = Commentator(self)
 
 		# skip the commercials (map)
 		self.demo_file.seek(HEADER_SIZE + self.header.map_size)
@@ -118,7 +119,6 @@ class Demo(object):
 					self.do_tick()
 				except DemoFileEnded:
 					break
-				self.commentary.next_tick()
 				pbar.update(self.info.current_tick - self.info.first_tick)
 			pbar.finish()
 		else:
@@ -127,7 +127,6 @@ class Demo(object):
 					self.do_tick()
 				except DemoFileEnded:
 					break
-				self.commentary.next_tick()
 		logger.info("Finished analyzing demo")
 
 	def find_keyframes(self):
@@ -210,6 +209,7 @@ class Demo(object):
 
 			if chunk_size and chunk_tick:
 				self.info.current_tick = chunk_tick
+				self.current_tick = chunk_tick
 
 			if chunk_size:
 				compressed = self.demo_file.read(chunk_size)
@@ -275,7 +275,7 @@ class Demo(object):
 			netobj.assign_fields(item.data)
 
 			if not netobj.ignorable:
-				netobj.process(self.commentary)
+				netobj.process(self.commentator)
 
 		self.delta.set_snapshot(snapshot)
 
@@ -285,7 +285,7 @@ class Demo(object):
 		message.collect_data()
 
 		if not message.ignorable:
-			message.process(self.commentary)
+			message.process(self.commentator)
 
 
 
